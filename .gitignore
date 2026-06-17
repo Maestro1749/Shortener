@@ -1,3 +1,6 @@
 .env
 logs/app.log
 Makefile
+.idea
+.vscode
+*.log
