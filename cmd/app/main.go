@@ -33,20 +33,12 @@ func main() {
 	defer logger.Sync()
 	logger.Info("Logger initialized successfully")
 
-	// .env
 	if err := godotenv.Load(); err != nil {
-		logger.Error("Error to load .env file")
-		panic(err)
+		logger.Warn("No .env file found, reading variables from environment")
 	}
 
-	userDB := os.Getenv("DB_USER")
-	passwordDB := os.Getenv("DB_PASSWORD")
-	hostDB := os.Getenv("DB_HOST")
-	portDB := os.Getenv("DB_PORT")
-	nameDB := os.Getenv("DB_NAME")
-
-	// Database
-	connectionString := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", userDB, passwordDB, hostDB, portDB, nameDB)
+	appPort := os.Getenv("APP_PORT")
+	connectionString := os.Getenv("DATABASE_URL")
 
 	db, err := sql.Open("postgres", connectionString)
 	if err != nil {
@@ -80,7 +72,7 @@ func main() {
 
 	// Server
 	srv := &http.Server{
-		Addr:         ":8080",
+		Addr:         ":" + appPort,
 		Handler:      router,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
@@ -88,7 +80,7 @@ func main() {
 	}
 
 	go func() {
-		logger.Info("Server started on :8080")
+		logger.Info("Server started", zap.String("port", appPort))
 
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("Failed to start server", zap.Error(err))
