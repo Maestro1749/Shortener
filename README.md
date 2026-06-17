@@ -30,7 +30,7 @@ REST API сервис для сокращения ссылок, написанн
 
 ## API
 ### Создать короткую ссылку
-POST /shorten
+POST /shortener
 ```json
 {
     "link": "https://example.com"
