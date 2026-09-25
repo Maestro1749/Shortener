@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -19,6 +20,10 @@ import (
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
+
+	grpchandler "shortener/internal/transport/grpc"
+	shortenerpc "shortener/internal/transport/grpc/proto/v1"
 )
 
 func main() {
@@ -38,6 +43,10 @@ func main() {
 	}
 
 	appPort := os.Getenv("APP_PORT")
+	grpcPort := os.Getenv("GRPC_PORT")
+	if grpcPort == "" {
+		grpcPort = "50051"
+	}
 	connectionString := os.Getenv("DATABASE_URL")
 
 	db, err := sql.Open("postgres", connectionString)
@@ -71,7 +80,7 @@ func main() {
 	router.Path("/{shortLink}").Methods("GET").HandlerFunc(handler.DecodeShortLink)
 
 	// Server
-	srv := &http.Server{
+	httpSrv := &http.Server{
 		Addr:         ":" + appPort,
 		Handler:      router,
 		ReadTimeout:  5 * time.Second,
@@ -79,11 +88,29 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
+	lis, err := net.Listen("tcp", ":"+grpcPort)
+	if err != nil {
+		logger.Fatal("Failed to listen for gRPC", zap.Error(err))
+	}
+
+	// gRPC server
+	grpcServer := grpc.NewServer()
+	grpcHandler := grpchandler.NewServer(service, logger)
+
+	shortenerpc.RegisterShortenerServiceServer(grpcServer, grpcHandler)
+
 	go func() {
 		logger.Info("Server started", zap.String("port", appPort))
 
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("Failed to start server", zap.Error(err))
+		}
+	}()
+
+	go func() {
+		logger.Info("gRPC Server started", zap.String("port", grpcPort))
+		if err := grpcServer.Serve(lis); err != nil {
+			logger.Error("Failed to start gRPC server", zap.Error(err))
 		}
 	}()
 
@@ -94,11 +121,12 @@ func main() {
 	<-quit
 
 	logger.Info("Shutting down server...")
+	grpcServer.GracefulStop()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := httpSrv.Shutdown(ctx); err != nil {
 		logger.Error("Failed to shutdown server", zap.Error(err))
 	}
 
