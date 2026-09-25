@@ -23,7 +23,7 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - ./migrations:/migrations
+      - ./migrations:/migrations:z
     command: [
       "-path", "/migrations",
       "-database", "${DATABASE_URL}",
@@ -44,8 +44,9 @@ services:
       - DATABASE_URL=${DATABASE_URL}
     ports:
       - "${APP_PORT}:${APP_PORT}"
+      - "${GRPC_PORT}:${GRPC_PORT}"
     volumes:
-      - ./logs:/app/logs
+      - ./logs:/app/logs:z
 
 volumes:
   db_data:
